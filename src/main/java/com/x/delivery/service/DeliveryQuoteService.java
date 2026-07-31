@@ -6,7 +6,9 @@ import com.x.delivery.entity.*;
 import com.x.delivery.repository.DeliveryQuoteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import java.math.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +33,16 @@ public class DeliveryQuoteService {
                         .distanceKm(distance).quotedFee(feeFor(provider, distance)).currencyCode(currency)
                         .status(DeliveryQuoteStatus.ACTIVE).expiresAt(expiresAt).build()))
                 .map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public DeliveryQuoteResponse requireActiveQuote(Long quoteId) {
+        DeliveryQuote quote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Delivery quote not found"));
+        if (quote.getStatus() != DeliveryQuoteStatus.ACTIVE || !quote.getExpiresAt().isAfter(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Delivery quote has expired or was selected");
+        }
+        return toResponse(quote);
     }
     private BigDecimal feeFor(DeliveryProviderType provider, BigDecimal distanceKm) {
         BigDecimal includedKm = new BigDecimal("3");

@@ -13,6 +13,8 @@ public class DeliveryController {
     private final DeliveryQuoteService deliveryQuoteService;
     @PostMapping("/quotes") public ResponseEntity<ApiResponse<java.util.List<DeliveryQuoteResponse>>> createQuotes(@Valid @RequestBody CreateDeliveryQuoteRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(HttpStatus.CREATED.value(), "Delivery quotes created", deliveryQuoteService.createQuotes(request))); }
+    @GetMapping("/quotes/{id}") public ResponseEntity<ApiResponse<DeliveryQuoteResponse>> getActiveQuote(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), deliveryQuoteService.requireActiveQuote(id))); }
     @PostMapping public ResponseEntity<ApiResponse<DeliveryResponse>> create(@Valid @RequestBody CreateDeliveryRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(HttpStatus.CREATED.value(), "Delivery created", deliveryService.create(request))); }
     @GetMapping("/{id}") public ResponseEntity<ApiResponse<DeliveryResponse>> get(@PathVariable Long id) {

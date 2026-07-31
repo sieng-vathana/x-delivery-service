@@ -10,9 +10,11 @@ import java.time.LocalDateTime;
 @Entity @Table(name = "deliveries") @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
 public class Delivery {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Version private Long version;
     @Column(name = "order_id", nullable = false, unique = true) private Long orderId;
     @Column(name = "store_id", nullable = false) private Long storeId;
     @Column(name = "quote_id", nullable = false, unique = true) private Long quoteId;
+    @Column(name = "idempotency_key", unique = true, length = 128) private String idempotencyKey;
     @Enumerated(EnumType.STRING) @Column(name = "provider_type", nullable = false, length = 32) private DeliveryProviderType providerType;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) private DeliveryStatus status;
     @Column(name = "tracking_number", unique = true, length = 80) private String trackingNumber;

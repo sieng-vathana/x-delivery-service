@@ -19,25 +19,38 @@ import java.util.stream.Collectors;
 public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
     private final DeliveryQuoteRepository quoteRepository;
+    private final DeliveryPersistenceService persistenceService;
     private final Map<DeliveryProviderType, DeliveryProvider> providers;
-    public DeliveryService(DeliveryRepository deliveryRepository, DeliveryQuoteRepository quoteRepository, List<DeliveryProvider> providers) {
+    public DeliveryService(DeliveryRepository deliveryRepository, DeliveryQuoteRepository quoteRepository,
+                           DeliveryPersistenceService persistenceService, List<DeliveryProvider> providers) {
         this.deliveryRepository = deliveryRepository;
         this.quoteRepository = quoteRepository;
+        this.persistenceService = persistenceService;
         this.providers = providers.stream().collect(Collectors.toMap(DeliveryProvider::providerType, Function.identity()));
     }
-    @Transactional
     public DeliveryResponse create(CreateDeliveryRequest request) {
-        DeliveryQuote quote = quoteRepository.findById(request.quoteId()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Delivery quote not found"));
-        if (quote.getStatus() != DeliveryQuoteStatus.ACTIVE || quote.getExpiresAt().isBefore(LocalDateTime.now())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Delivery quote has expired or was already selected");
-        DeliveryProvider provider = providers.get(quote.getProviderType());
-        if (provider == null) throw new ResponseStatusException(HttpStatus.CONFLICT, quote.getProviderType() + " is not enabled");
-        DeliveryBooking booking = provider.createBooking(request);
-        quote.setStatus(DeliveryQuoteStatus.SELECTED);
-        Delivery delivery = deliveryRepository.save(Delivery.builder().orderId(request.orderId()).storeId(quote.getStoreId()).quoteId(quote.getId())
-                .providerType(quote.getProviderType()).status(DeliveryStatus.ASSIGNED).trackingNumber(booking.trackingNumber())
-                .riderName(booking.riderName()).riderPhone(booking.riderPhone()).deliveryFee(quote.getQuotedFee())
-                .courierCost(quote.getQuotedFee()).codAmount(request.codAmount()).build());
-        return toResponse(delivery);
+        Delivery delivery = persistenceService.prepare(request);
+        if (delivery.getStatus() == DeliveryStatus.BOOKING
+                || delivery.getStatus() == DeliveryStatus.ASSIGNED
+                || delivery.getStatus() == DeliveryStatus.PICKED_UP
+                || delivery.getStatus() == DeliveryStatus.OUT_FOR_DELIVERY
+                || delivery.getStatus() == DeliveryStatus.DELIVERED) {
+            return toResponse(delivery);
+        }
+        delivery = persistenceService.beginBooking(delivery.getId());
+        if (delivery.getStatus() != DeliveryStatus.BOOKING) return toResponse(delivery);
+        DeliveryProvider provider = providers.get(delivery.getProviderType());
+        if (provider == null) {
+            persistenceService.markBookingFailed(delivery.getId(), "Provider is not enabled");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, delivery.getProviderType() + " is not enabled");
+        }
+        try {
+            DeliveryBooking booking = provider.createBooking(request, "delivery-" + delivery.getId());
+            return toResponse(persistenceService.markAssigned(delivery.getId(), booking));
+        } catch (RuntimeException exception) {
+            persistenceService.markBookingFailed(delivery.getId(), exception.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Delivery provider booking failed");
+        }
     }
     @Transactional(readOnly = true)
     public DeliveryResponse get(Long id) { return deliveryRepository.findById(id).map(this::toResponse)
@@ -45,6 +58,10 @@ public class DeliveryService {
     @Transactional
     public DeliveryResponse updateStatus(Long id, UpdateDeliveryStatusRequest request) {
         Delivery delivery = deliveryRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Delivery not found"));
+        if (!isAllowedTransition(delivery.getStatus(), request.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Delivery cannot move from " + delivery.getStatus() + " to " + request.status());
+        }
         delivery.setStatus(request.status());
         delivery.setFailureReason(request.failureReason());
         return toResponse(deliveryRepository.save(delivery));
@@ -53,9 +70,26 @@ public class DeliveryService {
     public DeliveryResponse recordRemittance(Long id, RecordRemittanceRequest request) {
         Delivery delivery = deliveryRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Delivery not found"));
         if (delivery.getStatus() != DeliveryStatus.DELIVERED) throw new ResponseStatusException(HttpStatus.CONFLICT, "COD can be remitted only after delivery");
+        if (delivery.getRemittedAt() != null) throw new ResponseStatusException(HttpStatus.CONFLICT, "COD was already remitted");
+        if (delivery.getCodAmount() != null && request.remittedAmount().compareTo(delivery.getCodAmount()) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Remitted amount cannot exceed COD amount");
+        }
         delivery.setRemittedAmount(request.remittedAmount());
         delivery.setRemittedAt(LocalDateTime.now());
         return toResponse(deliveryRepository.save(delivery));
     }
     private DeliveryResponse toResponse(Delivery d) { return new DeliveryResponse(d.getId(), d.getOrderId(), d.getStoreId(), d.getProviderType(), d.getStatus(), d.getTrackingNumber(), d.getRiderName(), d.getRiderPhone(), d.getDeliveryFee(), d.getCourierCost(), d.getCodAmount(), d.getRemittedAmount()); }
+
+    private boolean isAllowedTransition(DeliveryStatus current, DeliveryStatus next) {
+        if (current == next) return true;
+        return switch (current) {
+            case PENDING_ASSIGNMENT, FAILED_ATTEMPT -> next == DeliveryStatus.BOOKING || next == DeliveryStatus.CANCELLED;
+            case BOOKING -> next == DeliveryStatus.ASSIGNED || next == DeliveryStatus.FAILED_ATTEMPT || next == DeliveryStatus.CANCELLED;
+            case ASSIGNED -> next == DeliveryStatus.PICKED_UP || next == DeliveryStatus.CANCELLED;
+            case PICKED_UP -> next == DeliveryStatus.OUT_FOR_DELIVERY || next == DeliveryStatus.RETURNED;
+            case OUT_FOR_DELIVERY -> next == DeliveryStatus.DELIVERED
+                    || next == DeliveryStatus.FAILED_ATTEMPT || next == DeliveryStatus.RETURNED;
+            case DELIVERED, RETURNED, CANCELLED -> false;
+        };
+    }
 }

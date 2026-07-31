@@ -20,4 +20,4 @@ spring:
 
 services:
   store:
-    base-url: ${STORE_SERVICE_URL:http://127.0.0.1:8087}
+    base-url: ${STORE_SERVICE_URL:http://x-store-service:8080}
