@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>3.5.14</version><relativePath/></parent>
     <groupId>com.x</groupId><artifactId>x-delivery-service</artifactId><version>0.0.1-SNAPSHOT</version><name>x-delivery-service</name>
-    <properties><java.version>17</java.version></properties>
+    <properties><java.version>17</java.version><x-sharedlib.source-revision>20dbe8c</x-sharedlib.source-revision></properties>
     <repositories><repository><id>github-x-sharedlib</id><url>https://maven.pkg.github.com/VathanaProgrammer/x-sharedlib</url><snapshots><enabled>true</enabled></snapshots></repository></repositories>
     <dependencies>
         <dependency><groupId>com.x</groupId><artifactId>x-sharedlib</artifactId><version>0.0.1-SNAPSHOT</version></dependency>
