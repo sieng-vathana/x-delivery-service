@@ -5,12 +5,19 @@ import com.x.delivery.entity.*;
 import com.x.delivery.provider.*;
 import com.x.delivery.repository.DeliveryRepository;
 import com.x.delivery.repository.DeliveryQuoteRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -78,7 +85,41 @@ public class DeliveryService {
         delivery.setRemittedAt(LocalDateTime.now());
         return toResponse(deliveryRepository.save(delivery));
     }
-    private DeliveryResponse toResponse(Delivery d) { return new DeliveryResponse(d.getId(), d.getOrderId(), d.getStoreId(), d.getProviderType(), d.getStatus(), d.getTrackingNumber(), d.getRiderName(), d.getRiderPhone(), d.getDeliveryFee(), d.getCourierCost(), d.getCodAmount(), d.getRemittedAmount()); }
+    @Transactional(readOnly = true)
+    public Page<DeliveryResponse> list(Long storeId, Long orderId, DeliveryStatus status,
+                                       DeliveryProviderType providerType, String search, int page, int size) {
+        Specification<Delivery> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (storeId != null) {
+                predicates.add(cb.equal(root.get("storeId"), storeId));
+            }
+            if (orderId != null) {
+                predicates.add(cb.equal(root.get("orderId"), orderId));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (providerType != null) {
+                predicates.add(cb.equal(root.get("providerType"), providerType));
+            }
+            if (search != null && !search.trim().isEmpty()) {
+                String pattern = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
+                Predicate trackingLike = cb.like(cb.lower(root.get("trackingNumber")), pattern);
+                Predicate riderLike = cb.like(cb.lower(root.get("riderName")), pattern);
+                Predicate phoneLike = cb.like(cb.lower(root.get("riderPhone")), pattern);
+                predicates.add(cb.or(trackingLike, riderLike, phoneLike));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+        return deliveryRepository.findAll(spec, PageRequest.of(page, size, Sort.by("createdAt").descending()))
+                .map(this::toResponse);
+    }
+
+    private DeliveryResponse toResponse(Delivery d) {
+        return new DeliveryResponse(d.getId(), d.getOrderId(), d.getStoreId(), d.getProviderType(), d.getStatus(),
+                d.getTrackingNumber(), d.getRiderName(), d.getRiderPhone(), d.getDeliveryFee(), d.getCourierCost(),
+                d.getCodAmount(), d.getRemittedAmount(), d.getRemittedAt(), d.getCreatedAt());
+    }
 
     private boolean isAllowedTransition(DeliveryStatus current, DeliveryStatus next) {
         if (current == next) return true;
