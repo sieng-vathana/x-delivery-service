@@ -7,6 +7,7 @@ import com.x.delivery.entity.DeliveryProviderType;
 import com.x.delivery.entity.DeliveryStatus;
 import com.x.delivery.service.DeliveryService;
 import com.x.delivery.service.DeliveryQuoteService;
+import com.x.delivery.service.StoreDeliveryConfigService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -21,6 +22,19 @@ import org.springframework.web.bind.annotation.*;
 public class DeliveryController {
     private final DeliveryService deliveryService;
     private final DeliveryQuoteService deliveryQuoteService;
+    private final StoreDeliveryConfigService storeDeliveryConfigService;
+
+    @GetMapping("/stores/{storeId}/config")
+    public ResponseEntity<ApiResponse<StoreDeliveryConfigResponse>> getStoreConfig(@PathVariable Long storeId) {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), storeDeliveryConfigService.get(storeId)));
+    }
+
+    @PutMapping("/stores/{storeId}/config")
+    public ResponseEntity<ApiResponse<StoreDeliveryConfigResponse>> updateStoreConfig(
+            @PathVariable Long storeId, @Valid @RequestBody UpdateStoreDeliveryConfigRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Store delivery settings saved",
+                storeDeliveryConfigService.update(storeId, request)));
+    }
 
     @PostMapping("/quotes")
     public ResponseEntity<ApiResponse<java.util.List<DeliveryQuoteResponse>>> createQuotes(@Valid @RequestBody CreateDeliveryQuoteRequest request) {

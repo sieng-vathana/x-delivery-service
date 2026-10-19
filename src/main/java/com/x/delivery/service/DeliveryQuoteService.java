@@ -19,6 +19,7 @@ public class DeliveryQuoteService {
     private static final BigDecimal EARTH_RADIUS_KM = new BigDecimal("6371");
     private final DeliveryQuoteRepository quoteRepository;
     private final StoreLocationClient storeLocationClient;
+    private final StoreDeliveryConfigService configService;
 
     @Transactional
     public List<DeliveryQuoteResponse> createQuotes(CreateDeliveryQuoteRequest request) {
@@ -26,7 +27,14 @@ public class DeliveryQuoteService {
         BigDecimal distance = distanceKm(pickup.latitude(), pickup.longitude(), request.destinationLatitude(), request.destinationLongitude());
         String currency = request.currencyCode().toUpperCase(Locale.ROOT);
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
-        return List.of(DeliveryProviderType.OWN_RIDER, DeliveryProviderType.GRAB, DeliveryProviderType.VIREAK_BUNTHAM).stream()
+        DeliveryProviderType defaultProvider = configService.defaultProvider(request.storeId());
+        List<DeliveryProviderType> providers = configService.enabledProviders(request.storeId()).stream()
+                .sorted((left, right) -> Boolean.compare(right == defaultProvider, left == defaultProvider))
+                .toList();
+        if (providers.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This store has no enabled delivery providers");
+        }
+        return providers.stream()
                 .map(provider -> quoteRepository.save(DeliveryQuote.builder().storeId(request.storeId()).providerType(provider)
                         .pickupLatitude(pickup.latitude()).pickupLongitude(pickup.longitude())
                         .destinationLatitude(request.destinationLatitude()).destinationLongitude(request.destinationLongitude())

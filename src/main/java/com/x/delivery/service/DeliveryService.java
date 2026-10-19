@@ -21,21 +21,33 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
     private final DeliveryQuoteRepository quoteRepository;
     private final DeliveryPersistenceService persistenceService;
+    private final StoreDeliveryConfigService configService;
     private final Map<DeliveryProviderType, DeliveryProvider> providers;
     public DeliveryService(DeliveryRepository deliveryRepository, DeliveryQuoteRepository quoteRepository,
-                           DeliveryPersistenceService persistenceService, List<DeliveryProvider> providers) {
+                           DeliveryPersistenceService persistenceService, StoreDeliveryConfigService configService,
+                           List<DeliveryProvider> providers) {
         this.deliveryRepository = deliveryRepository;
         this.quoteRepository = quoteRepository;
         this.persistenceService = persistenceService;
+        this.configService = configService;
         this.providers = providers.stream().collect(Collectors.toMap(DeliveryProvider::providerType, Function.identity()));
     }
     public DeliveryResponse create(CreateDeliveryRequest request) {
+        if (deliveryRepository.findByIdempotencyKey(request.idempotencyKey()).isEmpty()) {
+            DeliveryQuote quote = quoteRepository.findById(request.quoteId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Delivery quote not found"));
+            if (!configService.isEnabled(quote.getStoreId(), quote.getProviderType())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        quote.getProviderType() + " is no longer enabled for this store");
+            }
+        }
         Delivery delivery = persistenceService.prepare(request);
         if (delivery.getStatus() == DeliveryStatus.BOOKING
                 || delivery.getStatus() == DeliveryStatus.ASSIGNED

@@ -17,17 +17,28 @@ public class StoreLocationClient {
         this.storeClient = builder.baseUrl(baseUrl).build();
     }
     public StoreCoordinates getCoordinates(Long storeId) {
+        StoreDetails store = getStoreDetails(storeId);
+        if (store.latitude() == null || store.longitude() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Store must have latitude and longitude before delivery can be quoted");
+        }
+        return new StoreCoordinates(store.latitude(), store.longitude());
+    }
+    public StoreDetails getStoreDetails(Long storeId) {
         try {
             ApiResponse<StoreLocationResponse> response = storeClient.get().uri("/api/v1/stores/{id}", storeId)
                     .retrieve().body(new ParameterizedTypeReference<ApiResponse<StoreLocationResponse>>() {});
-            if (response == null || response.getData() == null || response.getData().latitude() == null || response.getData().longitude() == null) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Store must have latitude and longitude before delivery can be quoted");
+            if (response == null || response.getData() == null || response.getData().businessId() == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Store was not found");
             }
-            return new StoreCoordinates(response.getData().latitude(), response.getData().longitude());
+            StoreLocationResponse data = response.getData();
+            return new StoreDetails(data.id(), data.businessId(), data.latitude(), data.longitude());
+        } catch (ResponseStatusException exception) {
+            throw exception;
         } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Store service is unavailable for delivery quote");
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Store service is unavailable for delivery settings");
         }
     }
     public record StoreCoordinates(BigDecimal latitude, BigDecimal longitude) { }
-    private record StoreLocationResponse(Long id, BigDecimal latitude, BigDecimal longitude) { }
+    public record StoreDetails(Long id, Long businessId, BigDecimal latitude, BigDecimal longitude) { }
+    private record StoreLocationResponse(Long id, Long businessId, BigDecimal latitude, BigDecimal longitude) { }
 }
