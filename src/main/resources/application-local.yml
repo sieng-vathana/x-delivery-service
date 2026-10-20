@@ -18,6 +18,10 @@ spring:
       ddl-auto: update
     show-sql: false
 
+x:
+  redis:
+    enabled: ${X_REDIS_ENABLED:false}
+
 services:
   store:
     base-url: http://127.0.0.1:8087

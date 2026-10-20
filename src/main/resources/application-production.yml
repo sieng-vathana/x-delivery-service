@@ -18,6 +18,17 @@ spring:
       ddl-auto: update
     show-sql: false
 
+x:
+  redis:
+    enabled: ${X_REDIS_ENABLED:true}
+    caches:
+      delivery-provider-catalog: 2m
+      delivery-enabled-providers: 2m
+      store-delivery-config: 2m
+      store-delivery-enabled-providers: 2m
+      store-delivery-default-provider: 2m
+      store-delivery-provider-enabled: 2m
+
 services:
   store:
     base-url: ${STORE_SERVICE_URL:http://x-store-service:8080}
