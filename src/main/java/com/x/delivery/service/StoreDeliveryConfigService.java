@@ -11,27 +11,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class StoreDeliveryConfigService {
-    private static final Set<DeliveryProviderType> DEFAULT_PROVIDERS =
-            Set.copyOf(EnumSet.allOf(DeliveryProviderType.class));
     private static final DeliveryProviderType DEFAULT_PROVIDER = DeliveryProviderType.GRAB;
 
     private final StoreDeliveryConfigRepository configRepository;
     private final StoreLocationClient storeLocationClient;
+    private final DeliveryProviderCatalogService providerCatalog;
 
     @Transactional(readOnly = true)
     public StoreDeliveryConfigResponse get(Long storeId) {
         StoreLocationClient.StoreDetails store = storeLocationClient.getStoreDetails(storeId);
         return configRepository.findByStoreId(storeId)
-                .map(StoreDeliveryConfigResponse::from)
-                .orElseGet(() -> new StoreDeliveryConfigResponse(storeId, store.businessId(), DEFAULT_PROVIDERS,
-                        DEFAULT_PROVIDER, "SIMULATED", null));
+                .map(this::toResponse)
+                .orElseGet(() -> {
+                    Set<DeliveryProviderType> available = providerCatalog.enabledProviders();
+                    DeliveryProviderType defaultProvider = available.contains(DEFAULT_PROVIDER)
+                            ? DEFAULT_PROVIDER : available.stream().findFirst().orElse(null);
+                    return new StoreDeliveryConfigResponse(storeId, store.businessId(), available,
+                            defaultProvider, "SIMULATED", null);
+                });
     }
 
     @Transactional
@@ -40,31 +43,56 @@ public class StoreDeliveryConfigService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The default provider must be enabled for this store");
         }
+        if (!providerCatalog.enabledProviders().containsAll(request.enabledProviders())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A selected provider is not currently offered by the platform");
+        }
         StoreLocationClient.StoreDetails store = storeLocationClient.getStoreDetails(storeId);
         StoreDeliveryConfig config = configRepository.findByStoreId(storeId)
                 .orElseGet(() -> StoreDeliveryConfig.builder().storeId(storeId).businessId(store.businessId()).build());
         config.setBusinessId(store.businessId());
         config.setEnabledProviders(new LinkedHashSet<>(request.enabledProviders()));
         config.setDefaultProvider(request.defaultProvider());
-        return StoreDeliveryConfigResponse.from(configRepository.save(config));
+        return toResponse(configRepository.save(config));
     }
 
     @Transactional(readOnly = true)
     public Set<DeliveryProviderType> enabledProviders(Long storeId) {
         return configRepository.findByStoreId(storeId)
-                .map(config -> Set.copyOf(config.getEnabledProviders()))
-                .orElse(DEFAULT_PROVIDERS);
+                .map(config -> {
+                    Set<DeliveryProviderType> effective = new LinkedHashSet<>(config.getEnabledProviders());
+                    effective.retainAll(providerCatalog.enabledProviders());
+                    return Set.copyOf(effective);
+                })
+                .orElseGet(providerCatalog::enabledProviders);
     }
 
     @Transactional(readOnly = true)
     public DeliveryProviderType defaultProvider(Long storeId) {
         return configRepository.findByStoreId(storeId)
-                .map(StoreDeliveryConfig::getDefaultProvider)
-                .orElse(DEFAULT_PROVIDER);
+                .map(config -> {
+                    Set<DeliveryProviderType> effective = enabledProviders(storeId);
+                    if (effective.contains(config.getDefaultProvider())) return config.getDefaultProvider();
+                    return effective.stream().findFirst().orElse(null);
+                })
+                .orElseGet(() -> {
+                    Set<DeliveryProviderType> available = providerCatalog.enabledProviders();
+                    return available.contains(DEFAULT_PROVIDER) ? DEFAULT_PROVIDER
+                            : available.stream().findFirst().orElse(null);
+                });
     }
 
     @Transactional(readOnly = true)
     public boolean isEnabled(Long storeId, DeliveryProviderType provider) {
         return enabledProviders(storeId).contains(provider);
+    }
+
+    private StoreDeliveryConfigResponse toResponse(StoreDeliveryConfig config) {
+        Set<DeliveryProviderType> effective = new LinkedHashSet<>(config.getEnabledProviders());
+        effective.retainAll(providerCatalog.enabledProviders());
+        DeliveryProviderType defaultProvider = effective.contains(config.getDefaultProvider())
+                ? config.getDefaultProvider() : effective.stream().findFirst().orElse(null);
+        return new StoreDeliveryConfigResponse(config.getStoreId(), config.getBusinessId(), Set.copyOf(effective),
+                defaultProvider, "SIMULATED", config.getUpdatedAt());
     }
 }

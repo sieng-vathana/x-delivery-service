@@ -8,6 +8,7 @@ import com.x.delivery.entity.DeliveryStatus;
 import com.x.delivery.service.DeliveryService;
 import com.x.delivery.service.DeliveryQuoteService;
 import com.x.delivery.service.StoreDeliveryConfigService;
+import com.x.delivery.service.DeliveryProviderCatalogService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,6 +24,19 @@ public class DeliveryController {
     private final DeliveryService deliveryService;
     private final DeliveryQuoteService deliveryQuoteService;
     private final StoreDeliveryConfigService storeDeliveryConfigService;
+    private final DeliveryProviderCatalogService deliveryProviderCatalogService;
+
+    @GetMapping("/providers")
+    public ResponseEntity<ApiResponse<java.util.List<DeliveryProviderOptionResponse>>> getProviders() {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), deliveryProviderCatalogService.list()));
+    }
+
+    @PutMapping("/providers")
+    public ResponseEntity<ApiResponse<java.util.List<DeliveryProviderOptionResponse>>> updateProviders(
+            @Valid @RequestBody UpdateDeliveryProvidersRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Delivery providers updated",
+                deliveryProviderCatalogService.update(request)));
+    }
 
     @GetMapping("/stores/{storeId}/config")
     public ResponseEntity<ApiResponse<StoreDeliveryConfigResponse>> getStoreConfig(@PathVariable Long storeId) {
