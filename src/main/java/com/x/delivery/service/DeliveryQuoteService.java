@@ -68,5 +68,7 @@ public class DeliveryQuoteService {
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
         return EARTH_RADIUS_KM.multiply(BigDecimal.valueOf(2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))).setScale(2, RoundingMode.HALF_UP);
     }
-    private DeliveryQuoteResponse toResponse(DeliveryQuote quote) { return new DeliveryQuoteResponse(quote.getId(), quote.getStoreId(), quote.getProviderType(), quote.getDistanceKm(), quote.getQuotedFee(), quote.getCurrencyCode(), quote.getExpiresAt()); }
+    private DeliveryQuoteResponse toResponse(DeliveryQuote quote) { return new DeliveryQuoteResponse(
+            quote.getId(), quote.getStoreId(), quote.getProviderType(), quote.getDistanceKm(), quote.getQuotedFee(),
+            quote.getCurrencyCode(), quote.getExpiresAt(), quote.getDestinationLatitude(), quote.getDestinationLongitude()); }
 }
